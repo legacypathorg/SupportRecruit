@@ -13,6 +13,8 @@ export async function sendEmail(opts: {
   templateKey: string;
   applicationId?: number;
   sentBy?: string;
+  /** Optional file attachments (e.g. applicant documents). Resend caps total email size around 40MB. */
+  attachments?: { filename: string; content: string }[];
 }): Promise<{ delivered: boolean; logged: boolean }> {
   let delivered = false;
   const apiKey = process.env.RESEND_API_KEY;
@@ -32,6 +34,7 @@ export async function sendEmail(opts: {
           to: [opts.to],
           subject: opts.subject,
           html: opts.html,
+          ...(opts.attachments && opts.attachments.length ? { attachments: opts.attachments } : {}),
         }),
       });
       delivered = res.ok;

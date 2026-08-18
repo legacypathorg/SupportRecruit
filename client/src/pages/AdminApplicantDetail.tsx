@@ -23,7 +23,7 @@ import {
   type ApplicationStatus,
   type EmailTemplateKey,
 } from "@shared/lps";
-import { ArrowLeft, Download, FileText, Mail, StickyNote, History, User, CalendarClock } from "lucide-react";
+import { ArrowLeft, Mail, StickyNote, History, User, CalendarClock } from "lucide-react";
 
 const NONE = "__none__";
 
@@ -38,7 +38,6 @@ export default function AdminApplicantDetail() {
   const assignReviewer = trpc.admin.assignReviewer.useMutation({ onSuccess: invalidate });
   const addNote = trpc.admin.addNote.useMutation({ onSuccess: invalidate });
   const updateTracking = trpc.admin.updateTracking.useMutation({ onSuccess: invalidate });
-  const documentUrl = trpc.admin.documentUrl.useMutation();
   const sendTemplated = trpc.admin.sendTemplatedEmail.useMutation({ onSuccess: invalidate });
 
   const [statusDialog, setStatusDialog] = useState<{ status: ApplicationStatus } | null>(null);
@@ -58,7 +57,7 @@ export default function AdminApplicantDetail() {
     );
   }
 
-  const { application: app, documents, notes, activity, emails, admins } = data;
+  const { application: app, notes, activity, emails, admins } = data;
   const yn = (v: boolean | null) => (v === true ? "Yes" : v === false ? "No" : "—");
   const fmtDate = (d: Date | null) => (d ? new Date(d).toLocaleString() : "—");
   const fmtDateInput = (d: Date | null) => (d ? new Date(d).toISOString().slice(0, 16) : "");
@@ -71,15 +70,6 @@ export default function AdminApplicantDetail() {
       setStatusDialog(null); setStatusExtra(""); setStatusSendEmail(true);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed.");
-    }
-  }
-
-  async function handleDownload(documentId: number) {
-    try {
-      const res = await documentUrl.mutateAsync({ documentId });
-      window.open(res.url, "_blank", "noopener");
-    } catch {
-      toast.error("Couldn't generate the download link. Please try again.");
     }
   }
 
@@ -127,7 +117,6 @@ export default function AdminApplicantDetail() {
         <Tabs defaultValue="application">
           <TabsList className="bg-white border">
             <TabsTrigger value="application"><User className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />Application</TabsTrigger>
-            <TabsTrigger value="documents"><FileText className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />Documents ({documents.length})</TabsTrigger>
             <TabsTrigger value="emails"><Mail className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />Emails ({emails.length})</TabsTrigger>
             <TabsTrigger value="activity"><History className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />Activity ({activity.length})</TabsTrigger>
           </TabsList>
@@ -156,29 +145,6 @@ export default function AdminApplicantDetail() {
               {infoRow("Final Certification", yn(app.ackFinalCertification))}
               {infoRow("Traffic Source", app.trafficSource)}
             </dl>
-          </TabsContent>
-
-          <TabsContent value="documents" className="bg-white rounded-xl border p-5 mt-3">
-            {documents.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">No documents uploaded.</p>
-            ) : (
-              <ul className="space-y-2">
-                {documents.map(d => (
-                  <li key={d.id} className="flex items-center gap-3 rounded-lg border p-3">
-                    <FileText className="h-5 w-5 text-[#0F2044] flex-shrink-0" aria-hidden="true" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{d.fileName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {d.docType} · {d.fileSize ? `${(d.fileSize / 1024).toFixed(0)} KB · ` : ""}uploaded {new Date(d.uploadedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Button size="sm" variant="outline" disabled={documentUrl.isPending} onClick={() => handleDownload(d.id)}>
-                      <Download className="h-4 w-4 mr-1" aria-hidden="true" /> Download
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
           </TabsContent>
 
           <TabsContent value="emails" className="bg-white rounded-xl border p-5 mt-3">

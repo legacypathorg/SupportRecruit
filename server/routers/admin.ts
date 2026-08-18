@@ -11,7 +11,6 @@ import {
 } from "../adminAuth";
 import { buildEmail } from "../emailTemplates";
 import { sendEmail } from "../emailService";
-import { storageGetSignedUrl } from "../storage";
 import {
   APPLICATION_STATUSES,
   EMAIL_TEMPLATE_KEYS,
@@ -97,14 +96,13 @@ export const adminRouter = router({
   detail: adminSessionProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {
     const application = await db.getApplicationById(input.id);
     if (!application) throw new TRPCError({ code: "NOT_FOUND", message: "Application not found." });
-    const [documents, notes, activity, emails, admins] = await Promise.all([
-      db.getDocumentsByApplication(input.id),
+    const [notes, activity, emails, admins] = await Promise.all([
       db.getNotesByApplication(input.id),
       db.getActivityByApplication(input.id),
       db.getEmailsByApplication(input.id),
       db.listAdmins(),
     ]);
-    return { application, documents, notes, activity, emails, admins };
+    return { application, notes, activity, emails, admins };
   }),
 
   updateStatus: adminSessionProcedure
@@ -180,16 +178,6 @@ export const adminRouter = router({
       await db.updateApplication(id, fields);
       await db.logActivity({ applicationId: id, actor: ctx.admin.name, action: "Tracking Updated", detail: changes.join("; ") });
       return { updated: true };
-    }),
-
-  documentUrl: adminSessionProcedure
-    .input(z.object({ documentId: z.number().int() }))
-    .mutation(async ({ input, ctx }) => {
-      const doc = await db.getDocumentById(input.documentId);
-      if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found." });
-      const url = await storageGetSignedUrl(doc.fileKey); // presigned download URL
-      await db.logActivity({ applicationId: doc.applicationId, actor: ctx.admin.name, action: "Document Downloaded", detail: doc.fileName });
-      return { url, fileName: doc.fileName };
     }),
 
   sendTemplatedEmail: adminSessionProcedure

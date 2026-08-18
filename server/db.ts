@@ -4,7 +4,6 @@ import {
   activityLog,
   adminAccounts,
   analyticsEvents,
-  applicationDocuments,
   applications,
   emailLog,
   internalNotes,
@@ -136,30 +135,6 @@ export async function listAllApplicationsForExport(f: ApplicationFilters) {
   let query = db.select().from(applications).orderBy(desc(applications.submittedAt)).$dynamic();
   if (where) query = query.where(where);
   return query;
-}
-
-/* ---------------- Documents ---------------- */
-
-export async function addDocument(doc: typeof applicationDocuments.$inferInsert) {
-  const db = await requireDb();
-  const [result] = await db.insert(applicationDocuments).values(doc);
-  return result.insertId;
-}
-
-export async function getDocumentsByApplication(applicationId: number) {
-  const db = await requireDb();
-  return db.select().from(applicationDocuments).where(eq(applicationDocuments.applicationId, applicationId));
-}
-
-export async function getDocumentById(id: number) {
-  const db = await requireDb();
-  const rows = await db.select().from(applicationDocuments).where(eq(applicationDocuments.id, id)).limit(1);
-  return rows[0];
-}
-
-export async function deleteDocument(id: number) {
-  const db = await requireDb();
-  await db.delete(applicationDocuments).where(eq(applicationDocuments.id, id));
 }
 
 /* ---------------- Notes ---------------- */

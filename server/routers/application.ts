@@ -5,9 +5,7 @@ import * as db from "../db";
 import { generateReferenceNumber, generateResumeToken } from "../referenceNumber";
 import { buildEmail } from "../emailTemplates";
 import { sendEmail } from "../emailService";
-import { storagePut } from "../storage";
 import {
-  DOCUMENT_TYPES,
   EXPERIENCE_OPTIONS,
   WEEKLY_AVAILABILITY,
   WORKING_DAYS,
@@ -139,73 +137,6 @@ export const applicationRouter = router({
         detail: `Sent to ${input.email}`,
       });
       return { success: result.delivered || result.logged };
-    }),
-
-  uploadDocument: publicProcedure
-    .input(
-      z.object({
-        resumeToken: z.string().min(1),
-        docType: z.enum(DOCUMENT_TYPES),
-        fileName: z.string().min(1).max(255),
-        mimeType: z.string().max(120),
-        base64Data: z.string().min(1),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const app = await getDraftOrThrow(input.resumeToken);
-
-      const buffer = Buffer.from(input.base64Data, "base64");
-      const MAX_BYTES = 15 * 1024 * 1024; // 15MB
-      if (buffer.byteLength > MAX_BYTES) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "File is too large (15MB max)." });
-      }
-
-      const { key } = await storagePut(
-        `applications/${app.resumeToken}/${input.fileName}`,
-        buffer,
-        input.mimeType || "application/octet-stream"
-      );
-
-      const documentId = await db.addDocument({
-        applicationId: app.id,
-        docType: input.docType,
-        fileName: input.fileName,
-        fileKey: key,
-        mimeType: input.mimeType,
-        fileSize: buffer.byteLength,
-      });
-
-      await db.logActivity({
-        applicationId: app.id,
-        actor: "Applicant",
-        action: "document_uploaded",
-        detail: `${input.docType}: ${input.fileName}`,
-      });
-
-      return {
-        documentId,
-        docType: input.docType,
-        fileName: input.fileName,
-        fileSize: buffer.byteLength,
-      };
-    }),
-
-  removeDocument: publicProcedure
-    .input(z.object({ resumeToken: z.string().min(1), documentId: z.number().int() }))
-    .mutation(async ({ input }) => {
-      const app = await getDraftOrThrow(input.resumeToken);
-      const doc = await db.getDocumentById(input.documentId);
-      if (!doc || doc.applicationId !== app.id) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Document not found." });
-      }
-      await db.deleteDocument(input.documentId);
-      await db.logActivity({
-        applicationId: app.id,
-        actor: "Applicant",
-        action: "document_removed",
-        detail: `Document #${input.documentId}`,
-      });
-      return { success: true } as const;
     }),
 
   submit: publicProcedure

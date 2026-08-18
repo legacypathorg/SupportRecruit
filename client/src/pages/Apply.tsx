@@ -19,14 +19,10 @@ import {
   WEEKLY_AVAILABILITY,
   WORKING_DAYS,
   EXPERIENCE_OPTIONS,
-  DOCUMENT_TYPES,
   US_STATES,
 } from "@shared/lps";
 import {
   CheckCircle2,
-  FileText,
-  Trash2,
-  UploadCloud,
   Mail,
   Download,
   AlertCircle,
@@ -71,9 +67,7 @@ const initialForm: FormState = {
   ackPerformanceComp: false, ackRegistrationFee: false, ackFinalCertification: false,
 };
 
-interface UploadedDoc { id: number; docType: string; fileName: string; fileSize: number | null }
-
-const STEPS = ["Contact", "Availability", "Experience", "Documents", "Acknowledgments", "Review"] as const;
+const STEPS = ["Contact", "Availability", "Experience", "Acknowledgments", "Review"] as const;
 const TOKEN_KEY = "lps_resume_token";
 
 /* -------------------------------- component -------------------------------- */
@@ -84,22 +78,16 @@ export default function Apply() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [resumeToken, setResumeToken] = useState<string | null>(null);
-  const [documents, setDocuments] = useState<UploadedDoc[]>([]);
   const [starting, setStarting] = useState(true);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveEmail, setSaveEmail] = useState("");
   const [submitted, setSubmitted] = useState<{ referenceNumber: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadType, setUploadType] = useState<string>("Resume");
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef(form);
   formRef.current = form;
 
   const startMutation = trpc.application.start.useMutation();
   const saveDraft = trpc.application.saveDraft.useMutation();
   const emailResume = trpc.application.emailResumeLink.useMutation();
-  const uploadDoc = trpc.application.uploadDocument.useMutation();
-  const removeDoc = trpc.application.removeDocument.useMutation();
   const submitApp = trpc.application.submit.useMutation();
   const emailCopy = trpc.application.emailCopy.useMutation();
   const trackEvent = trpc.application.trackEvent.useMutation();
@@ -142,7 +130,6 @@ export default function Apply() {
             ackRegistrationFee: a.ackRegistrationFee ?? false,
             ackFinalCertification: a.ackFinalCertification ?? false,
           });
-          setDocuments(data.documents.map(d => ({ ...d, fileSize: d.fileSize ?? null })));
           setStep(Math.min(a.currentStep ?? 0, STEPS.length - 1));
           if (urlToken) toast.success("Welcome back! Your application has been restored.");
           setStarting(false);
@@ -223,8 +210,7 @@ export default function Apply() {
       if (f.experienceAreas.length === 0) e.experienceAreas = "Please select at least one area of relevant experience.";
       if (!f.profession.trim()) e.profession = "Please tell us your current profession or role.";
     }
-    // Step 3 (documents) is optional
-    if (s === 4) {
+    if (s === 3) {
       if (!f.ackIndependentContractor) e.ackIndependentContractor = "This acknowledgment is required to continue.";
       if (!f.ackNoLegalAdvice) e.ackNoLegalAdvice = "This acknowledgment is required to continue.";
       if (!f.ackConfidentiality) e.ackConfidentiality = "This agreement is required to continue.";
@@ -255,53 +241,10 @@ export default function Apply() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  /* ------------------------------- documents ------------------------------- */
-  async function handleFileChosen(file: File) {
-    if (!resumeToken) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("That file is larger than 10 MB. Please choose a smaller file.");
-      return;
-    }
-    setUploading(true);
-    try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await uploadDoc.mutateAsync({
-        resumeToken,
-        docType: uploadType as (typeof DOCUMENT_TYPES)[number],
-        fileName: file.name,
-        mimeType: file.type || "application/octet-stream",
-        base64Data: base64,
-      });
-      setDocuments(d => [...d, { id: res.documentId, docType: res.docType, fileName: res.fileName, fileSize: res.fileSize }]);
-      toast.success(`${file.name} uploaded successfully.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
-
-  async function handleRemoveDoc(id: number) {
-    if (!resumeToken) return;
-    try {
-      await removeDoc.mutateAsync({ resumeToken, documentId: id });
-      setDocuments(d => d.filter(x => x.id !== id));
-      toast.success("Document removed.");
-    } catch {
-      toast.error("Couldn't remove that document. Please try again.");
-    }
-  }
-
   /* --------------------------------- submit -------------------------------- */
   async function handleSubmit() {
     if (!resumeToken) return;
-    if (!validateStep(4)) { setStep(4); return; }
+    if (!validateStep(3)) { setStep(3); return; }
     try {
       const f = form;
       const res = await submitApp.mutateAsync({
@@ -411,7 +354,7 @@ export default function Apply() {
             {/* Print-only summary */}
             <div className="hidden print:block mt-8 text-left text-sm">
               <h2 className="font-bold text-lg">Application Summary — {submitted.referenceNumber}</h2>
-              <ReviewSummary form={form} documents={documents} plain />
+              <ReviewSummary form={form} plain />
             </div>
           </div>
         </main>
@@ -450,19 +393,8 @@ export default function Apply() {
           {step === 0 && <StepContact form={form} set={set} errors={errors} />}
           {step === 1 && <StepAvailability form={form} set={set} errors={errors} />}
           {step === 2 && <StepExperience form={form} set={set} errors={errors} />}
-          {step === 3 && (
-            <StepDocuments
-              documents={documents}
-              uploading={uploading}
-              uploadType={uploadType}
-              setUploadType={setUploadType}
-              fileInputRef={fileInputRef}
-              onFileChosen={handleFileChosen}
-              onRemove={handleRemoveDoc}
-            />
-          )}
-          {step === 4 && <StepAcknowledgments form={form} set={set} errors={errors} />}
-          {step === 5 && <ReviewSummary form={form} documents={documents} onEdit={setStep} />}
+          {step === 3 && <StepAcknowledgments form={form} set={set} errors={errors} />}
+          {step === 4 && <ReviewSummary form={form} onEdit={setStep} />}
 
           {/* Nav buttons */}
           <div className="mt-9 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t pt-6">
@@ -704,71 +636,6 @@ function StepExperience({ form, set, errors }: StepProps) {
   );
 }
 
-function StepDocuments(props: {
-  documents: UploadedDoc[];
-  uploading: boolean;
-  uploadType: string;
-  setUploadType: (t: string) => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onFileChosen: (f: File) => void;
-  onRemove: (id: number) => void;
-}) {
-  const { documents, uploading, uploadType, setUploadType, fileInputRef, onFileChosen, onRemove } = props;
-  return (
-    <div>
-      <SectionTitle title="Supporting Documents" subtitle="Upload your résumé, ID, or certifications (optional but recommended). Max 10 MB per file." />
-      <div className="grid gap-4 sm:grid-cols-[200px_1fr] items-end">
-        <div className="space-y-1.5">
-          <Label htmlFor="docType">Document Type</Label>
-          <Select value={uploadType} onValueChange={setUploadType}>
-            <SelectTrigger id="docType"><SelectValue /></SelectTrigger>
-            <SelectContent>{DOCUMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-          </Select>
-        </div>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="sr-only"
-            id="file-upload"
-            accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
-            onChange={e => { const f = e.target.files?.[0]; if (f) onFileChosen(f); }}
-          />
-          <Button
-            variant="outline"
-            disabled={uploading}
-            className="w-full border-dashed border-2 border-[#C9A227]/60 h-12 text-[#0F2044] hover:bg-[#FAF7F0]"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <UploadCloud className="h-5 w-5 mr-2 text-[#C9A227]" aria-hidden="true" />
-            {uploading ? "Uploading..." : `Choose a ${uploadType} file to upload`}
-          </Button>
-        </div>
-      </div>
-
-      {documents.length > 0 && (
-        <ul className="mt-6 space-y-2">
-          {documents.map(d => (
-            <li key={d.id} className="flex items-center gap-3 rounded-lg border p-3 bg-[#FAF7F0]/60">
-              <FileText className="h-5 w-5 text-[#0F2044] flex-shrink-0" aria-hidden="true" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{d.fileName}</p>
-                <p className="text-xs text-muted-foreground">{d.docType}{d.fileSize ? ` · ${(d.fileSize / 1024).toFixed(0)} KB` : ""}</p>
-              </div>
-              <Button variant="ghost" size="icon" aria-label={`Remove ${d.fileName}`} onClick={() => onRemove(d.id)}>
-                <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {documents.length === 0 && (
-        <p className="mt-5 text-xs text-muted-foreground">No documents uploaded yet. You may continue without uploading, but a résumé strengthens your application.</p>
-      )}
-    </div>
-  );
-}
-
 const ACKS: { key: keyof FormState; title: string; text: string }[] = [
   { key: "ackIndependentContractor", title: "Independent Contractor Acknowledgment", text: "I understand that this is an independent contractor role, not employment." },
   { key: "ackNoLegalAdvice", title: "No Legal Advice Acknowledgment", text: "I understand I am not permitted to provide legal advice." },
@@ -813,7 +680,7 @@ function StepAcknowledgments({ form, set, errors }: StepProps) {
   );
 }
 
-function ReviewSummary({ form, documents, onEdit, plain }: { form: FormState; documents: UploadedDoc[]; onEdit?: (step: number) => void; plain?: boolean }) {
+function ReviewSummary({ form, onEdit, plain }: { form: FormState; onEdit?: (step: number) => void; plain?: boolean }) {
   const yn = (v: boolean | null) => (v === true ? "Yes" : v === false ? "No" : "—");
   const sections: { title: string; step: number; rows: [string, string][] }[] = [
     {
@@ -842,12 +709,7 @@ function ReviewSummary({ form, documents, onEdit, plain }: { form: FormState; do
       ],
     },
     {
-      title: "Documents", step: 3, rows: documents.length
-        ? documents.map(d => [d.docType, d.fileName] as [string, string])
-        : [["Uploaded Files", "None"]],
-    },
-    {
-      title: "Acknowledgments", step: 4, rows: ACKS.map(a => [a.title, yn(form[a.key] as boolean)] as [string, string]),
+      title: "Acknowledgments", step: 3, rows: ACKS.map(a => [a.title, yn(form[a.key] as boolean)] as [string, string]),
     },
   ];
 
